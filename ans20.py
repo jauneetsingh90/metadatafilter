@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from astrapy import DataAPIClient
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains import LLMChain
+from concurrent.futures import ThreadPoolExecutor
 
 # Load environment variables
 load_dotenv()
@@ -105,7 +106,7 @@ def embed_and_store_text(text, filename):
     documents = [Document(page_content=chunk, metadata={"filename": filename}) for chunk in texts]
     vectorstore.add_documents(documents)
 
-@st.cache_data()
+@st.cache_data(ttl=600)
 def get_all_filenames():
     all_documents = collection.find({}, projection={"metadata.filename": True})
     filenames = list(set(doc['metadata']['filename'] for doc in all_documents if 'metadata' in doc and 'filename' in doc['metadata']))
@@ -158,14 +159,28 @@ if st.session_state.messages:
     for message in st.session_state.messages:
         st.chat_message(message.type).markdown(message.content)
 
+def refresh_filenames():
+    filenames = get_all_filenames()
+    if uploaded_file.name not in filenames:
+        filenames.append(uploaded_file.name)
+    st.session_state['filenames'] = filenames
+
 with st.sidebar:
     uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+    
     if uploaded_file is not None:
-        text = extract_text_from_pdf(uploaded_file)
+        with ThreadPoolExecutor() as executor:
+            future = executor.submit(extract_text_from_pdf, uploaded_file)
+            text = future.result()
+        
         embed_and_store_text(text, uploaded_file.name)
         st.success("PDF content has been embedded and stored successfully.")
-    
-    filenames = get_all_filenames()
+        refresh_filenames()  # Refresh filenames after upload
+
+    if 'filenames' not in st.session_state:
+        st.session_state['filenames'] = get_all_filenames()
+
+    filenames = st.session_state['filenames']
     filenames.insert(0, "ALL")
     selected_filename = st.selectbox("Select a document for search:", filenames, key='selected_filename')
 
