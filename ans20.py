@@ -161,8 +161,10 @@ if st.session_state.messages:
 
 def refresh_filenames():
     filenames = get_all_filenames()
-    if uploaded_file.name not in filenames:
+    if uploaded_file and uploaded_file.name not in filenames:
         filenames.append(uploaded_file.name)
+    if "ALL" not in filenames:
+        filenames.insert(0, "ALL")
     st.session_state['filenames'] = filenames
 
 with st.sidebar:
@@ -179,11 +181,15 @@ with st.sidebar:
 
     if 'filenames' not in st.session_state:
         st.session_state['filenames'] = get_all_filenames()
+        if "ALL" not in st.session_state['filenames']:
+            st.session_state['filenames'].insert(0, "ALL")
 
     filenames = st.session_state['filenames']
-    filenames.insert(0, "ALL")
-    selected_filename = st.selectbox("Select a document for search:", filenames, key='selected_filename')
+    
+    # Make sure selected_filename persists
+    selected_filename = st.selectbox("Select a document for search:", filenames, index=filenames.index(st.session_state.get('selected_filename', "ALL")), key='selected_filename')
 
+# Handle chat input and processing
 if question := st.chat_input("How can I help you?", key='chat_input'):
     st.session_state.messages.append(HumanMessage(content=question))
     handle_chat(question, selected_filename)
